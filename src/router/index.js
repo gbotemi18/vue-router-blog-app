@@ -8,7 +8,13 @@ const routes = [
     component: () => import('../views/HomeView.vue'),
   },
   {
-    path: '/posts/:postId',
+    path: '/page/:pageNumber(\\d+)',
+    name: 'posts-page',
+    meta: { title: 'Latest posts' },
+    component: () => import('../views/HomeView.vue'),
+  },
+  {
+    path: '/posts/:postId/:slug?',
     name: 'post-detail',
     meta: { title: 'Post details' },
     component: () => import('../views/PostDetailView.vue'),

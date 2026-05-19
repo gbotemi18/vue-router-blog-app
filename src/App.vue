@@ -133,7 +133,7 @@ onMounted(() => {
         <button class="ghost-button" type="button" @click="goBack">
           Previous page
         </button>
-        <RouterLink class="ghost-link" :to="{ name: 'home' }">Home</RouterLink>
+        <RouterLink class="ghost-link" :to="{ name: 'home' }">All posts</RouterLink>
       </nav>
     </header>
 

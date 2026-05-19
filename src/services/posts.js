@@ -1,4 +1,6 @@
 const API_BASE_URL = 'https://api.oluwasetemi.dev'
+export const POSTS_PER_PAGE = 10
+export const MAX_VISIBLE_POSTS = 30
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -226,6 +228,13 @@ function cleanText(value = '') {
   return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+function slugify(value = '') {
+  return cleanText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'untitled'
+}
+
 function tokenize(text) {
   return cleanText(text).toLowerCase().match(/[a-z]+/g) ?? []
 }
@@ -319,6 +328,25 @@ function postsFromPayload(payload) {
   return []
 }
 
+function metaFromPayload(payload, count, page, limit, totalCap = Infinity) {
+  const rawTotal = Number(payload?.meta?.total ?? count)
+  const total = Math.min(rawTotal, totalCap)
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+  const currentPage = Number(payload?.meta?.page ?? page)
+  const currentLimit = Number(payload?.meta?.limit ?? limit)
+
+  return {
+    total,
+    page: currentPage,
+    limit: currentLimit,
+    totalPages,
+    hasNextPage:
+      payload?.meta?.hasNextPage ?? currentPage < totalPages,
+    hasPreviousPage:
+      payload?.meta?.hasPreviousPage ?? currentPage > 1,
+  }
+}
+
 function parseJson(rawPayload) {
   if (!rawPayload) {
     return null
@@ -400,6 +428,7 @@ function normalizePost(post) {
     ...post,
     title,
     category,
+    slug: slugify(post.slug || title),
     excerpt,
     content,
     tagList: tags,
@@ -436,10 +465,10 @@ async function request(path) {
 }
 
 export async function fetchPosts() {
-  const payload = await request('/posts')
+  const payload = await request(`/posts?limit=${MAX_VISIBLE_POSTS}`)
 
   return postsFromPayload(payload)
-    .filter((post) => post.status === 'PUBLISHED')
+    .slice(0, MAX_VISIBLE_POSTS)
     .sort((left, right) => {
       const leftDate = new Date(left.publishedAt || left.updatedAt || 0)
       const rightDate = new Date(right.publishedAt || right.updatedAt || 0)
@@ -448,13 +477,41 @@ export async function fetchPosts() {
     .map(normalizePost)
 }
 
-export async function fetchPostById(postId) {
-  const payload = await request(`/posts/${encodeURIComponent(postId)}`)
-  const post = normalizePost(payload)
+export async function fetchPostsPage(page = 1, limit = POSTS_PER_PAGE) {
+  const maxPage = Math.max(1, Math.ceil(MAX_VISIBLE_POSTS / limit))
 
-  if (post.status !== 'PUBLISHED') {
-    throw new NotFoundError('This post is not currently available.')
+  if (page > maxPage) {
+    return {
+      posts: [],
+      meta: {
+        total: MAX_VISIBLE_POSTS,
+        page,
+        limit,
+        totalPages: maxPage,
+        hasNextPage: false,
+        hasPreviousPage: page > 1,
+      },
+    }
   }
 
-  return post
+  const payload = await request(`/posts?limit=${limit}&page=${page}`)
+  const startIndex = (page - 1) * limit
+  const remainingPosts = Math.max(0, MAX_VISIBLE_POSTS - startIndex)
+  const posts = postsFromPayload(payload)
+    .slice(0, remainingPosts)
+    .map(normalizePost)
+  const meta = metaFromPayload(
+    payload,
+    posts.length,
+    page,
+    limit,
+    MAX_VISIBLE_POSTS,
+  )
+
+  return { posts, meta }
+}
+
+export async function fetchPostById(postId) {
+  const payload = await request(`/posts/${encodeURIComponent(postId)}`)
+  return normalizePost(payload)
 }
